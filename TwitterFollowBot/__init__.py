@@ -154,6 +154,42 @@ class TwitterBot:
                 for follow in following:
                     out_file.write("%s\n" % (follow))
 
+    def sync_favorited(self):
+        """
+            Syncs the user's favorited tweets locally so it isn't necessary
+            to repeatedly look them up via the Twitter API.
+
+            It is important to run this method at least daily so the bot is working
+            with a relatively up-to-date version of the user's follows.
+
+            Do not run this method too often, however, or it will quickly cause your
+            bot to get rate limited by the Twitter API.
+        """
+        max_count = 200
+        faved_tweets = self.TWITTER_CONNECTION.favorites.list(screen_name=self.BOT_CONFIG["TWITTER_HANDLE"], count=max_count)
+        tweet_ids = list(map(lambda tweet: tweet["id"], faved_tweets))
+        if len(tweet_ids) == 0:
+            return
+        oldest_id_of_last_fetch = tweet_ids[-1]
+        fetch_count = 1
+
+        with open(self.BOT_CONFIG["FAVORITED_FILE"], "w") as out_file:
+            for tweet in tweet_ids:
+                out_file.write("%s\n" % (tweet))
+
+        while len(tweet_ids) == max_count:
+            faved_tweets = self.TWITTER_CONNECTION.favorites.list(screen_name=self.BOT_CONFIG["TWITTER_HANDLE"], count=max_count,
+                                                                     max_id=int(oldest_id_of_last_fetch)-1)
+            if len(tweet_ids) == 0:
+                return
+            tweet_ids = list(map(lambda tweet: tweet["id"], faved_tweets))
+            oldest_id_of_last_fetch = tweet_ids[-1]
+            fetch_count+=1
+
+            with open(self.BOT_CONFIG["FAVORITED_FILE"], "a") as out_file:
+                for tweet in tweet_ids:
+                    out_file.write("%s\n" % (tweet))
+
     def get_do_not_follow_list(self):
         """
             Returns the set of users the bot has already followed in the past.
@@ -189,6 +225,17 @@ class TwitterBot:
                 follows_list.append(int(line))
 
         return set(follows_list)
+
+    def get_favorited_tweets_list(self):
+      """
+          Returns the list of favorited tweets
+      """
+      favorited_list = []
+      with open(self.BOT_CONFIG["FAVORITED_FILE"], "r") as in_file:
+          for line in in_file:
+              favorited_list.append(int(line))
+
+      return set(favorited_list)
 
     def search_tweets(self, phrase, count=100, result_type="recent"):
         """
